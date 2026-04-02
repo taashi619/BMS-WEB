@@ -1,28 +1,22 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-// import { LoginPage } from "./features/auth/login";
+import { LoginPage } from "./features/auth/login";
 import Layout from "./components/Layout";
-import DashboardPage from "../src/features/Dashboard";
-import BikesPage from "../src/features/Bikes";
-import RequestsPage from "../src/features/RequestsPage";
-import MaintenancePage from "../src/features/MaintenancePage";
-import ComplaintsPage from "../src/features/ComplaintsPage";
-import StudentsPage from "../src/features/StudentsPage";
+import DashboardPage from "./features/Dashboard";
+import BikesPage from "./features/Bikes";
+import RequestsPage from "./features/RequestsPage";
+import MaintenancePage from "./features/MaintenancePage";
+import ComplaintsPage from "./features/ComplaintsPage";
+import StudentsPage from "./features/StudentsPage";
+
+function isAuthenticated() {
+  return Boolean(localStorage.getItem("bmsAdminToken"));
+}
 
 function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* <Route path="/" element={<LoginPage />} /> */}
-         <Route path="/" element={<Navigate to="/admin/dashboard" replace />} />
-
-        <Route
-          path="/admin"
-          element={
-            <Layout>
-              <DashboardPage />
-            </Layout>
-          }
-        />
+        <Route path="/" element={<LoginPage />} />
 
         <Route
           path="/admin/*"

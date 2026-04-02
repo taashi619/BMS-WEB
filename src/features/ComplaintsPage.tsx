@@ -1,6 +1,7 @@
-import { useState, type ReactElement } from "react";
+import { useEffect, useState, type ReactElement } from "react";
+import { api } from "../services/api";
 
-type ComplaintStatus = "NEW" | "IN_REVIEW" | "CLOSED";
+type ComplaintStatus = "NEW" | "REVIEWED" | "RESOLVED";
 
 interface ComplaintUser {
   id: number;
@@ -29,117 +30,65 @@ interface ComplaintItem {
   admin: ComplaintAdmin | null;
 }
 
-// ---------- dummy data shaped like API ----------
-const initialComplaints: ComplaintItem[] = [
-  {
-    id: 1,
-    userId: 2,
-    adminId: null,
-    description: "Staff was late to unlock the bicycle stand at 8:30am.",
-    status: "NEW",
-    photoUrl: null,
-    createdAt: "2026-02-02T15:40:10.000Z",
-    user: {
-      id: 2,
-      firstName: "Student",
-      lastName: "Two",
-      email: "student2@uni.com",
-      role: "STUDENT",
-    },
-    admin: null,
-  },
-  {
-    id: 2,
-    userId: 2,
-    adminId: null,
-    description: "Bicycle chain is broken.",
-    status: "NEW",
-    photoUrl:
-      "https://bms-development-images.s3.us-east-1.amazonaws.com/complaints/example-chain-broken.png",
-    createdAt: "2026-02-02T16:14:10.849Z",
-    user: {
-      id: 2,
-      firstName: "Student",
-      lastName: "Two",
-      email: "student2@uni.com",
-      role: "STUDENT",
-    },
-    admin: null,
-  },
-  {
-    id: 3,
-    userId: 5,
-    adminId: 1,
-    description: "Was charged a fine although I returned the bicycle on time.",
-    status: "IN_REVIEW",
-    photoUrl: null,
-    createdAt: "2026-02-03T09:05:00.000Z",
-    user: {
-      id: 5,
-      firstName: "Liam",
-      lastName: "Brown",
-      email: "s7654321@uni.com",
-      role: "STUDENT",
-    },
-    admin: {
-      id: 1,
-      firstName: "Admin",
-      lastName: "User",
-      email: "admin@uni.com",
-    },
-  },
-  {
-    id: 4,
-    userId: 7,
-    adminId: 1,
-    description: "Seat height was stuck; issue already fixed, just feedback.",
-    status: "CLOSED",
-    photoUrl: null,
-    createdAt: "2026-02-01T12:30:00.000Z",
-    user: {
-      id: 7,
-      firstName: "Ayesha",
-      lastName: "Singh",
-      email: "s1234567@uni.com",
-      role: "STUDENT",
-    },
-    admin: {
-      id: 1,
-      firstName: "Admin",
-      lastName: "User",
-      email: "admin@uni.com",
-    },
-  },
-];
-
 // ---------- main page ----------
 export default function ComplaintsPage(): ReactElement {
-  const [complaints, setComplaints] =
-    useState<ComplaintItem[]>(initialComplaints);
-  const [statusFilter, setStatusFilter] = useState<
-    "" | ComplaintStatus
-  >("");
+  const [complaints, setComplaints] = useState<ComplaintItem[]>([]);
+  const [statusFilter, setStatusFilter] = useState<"" | ComplaintStatus>("");
   const [selected, setSelected] = useState<ComplaintItem | null>(null);
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const res = await api.get("/complain/all");
+        const data = (res.data.complaints ?? []) as Array<any>;
+
+        const mapped: ComplaintItem[] = data.map((c) => ({
+          id: c.id,
+          userId: c.userId,
+          adminId: c.adminId ?? null,
+          description: c.description,
+          status: c.status as ComplaintStatus,
+          photoUrl: c.photoUrl ?? null,
+          createdAt: c.createdAt,
+          user: c.user,
+          admin: c.admin ?? null,
+        }));
+
+        setComplaints(mapped);
+      } catch (err) {
+        console.error("Failed to load complaints", err);
+      }
+    }
+
+    load();
+  }, []);
 
   const filtered = complaints.filter((c) =>
     statusFilter ? c.status === statusFilter : true
   );
 
-  const handleStatusChange = (id: number, status: ComplaintStatus) => {
-    setComplaints((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, status } : c))
-    );
-    if (selected?.id === id) {
-      setSelected({ ...selected, status });
+  const handleStatusChange = async (
+    id: number,
+    status: ComplaintStatus
+  ) => {
+    try {
+      await api.patch(`/complain/${id}/status`, { status });
+
+      // optimistic update
+      setComplaints((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, status } : c))
+      );
+
+      setSelected(null); // close modal
+    } catch (err) {
+      console.error("Failed to update complaint status", err);
     }
   };
 
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="text-xl font-semibold text-text-main">
-          Complaints
-        </h1>
+        <h1 className="text-xl font-semibold text-text-main">Complaints</h1>
         <p className="text-sm text-text-secondary">
           Review student complaints and update their status.
         </p>
@@ -159,8 +108,8 @@ export default function ComplaintsPage(): ReactElement {
         >
           <option value="">All statuses</option>
           <option value="NEW">New</option>
-          <option value="IN_REVIEW">In review</option>
-          <option value="CLOSED">Closed</option>
+          <option value="REVIEWED">In review</option>
+          <option value="RESOLVED">Closed</option>
         </select>
       </div>
 
@@ -242,6 +191,16 @@ function ComplaintDetailsModal({
   onClose,
   onStatusChange,
 }: ComplaintDetailsModalProps): ReactElement {
+  const [localStatus, setLocalStatus] = useState<ComplaintStatus>(
+    complaint.status
+  );
+
+  const handleSave = () => {
+    if (localStatus !== complaint.status) {
+      onStatusChange(complaint.id, localStatus);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/30">
       <div className="w-full max-w-xl rounded-2xl bg-white shadow-xl border border-slate-200">
@@ -337,19 +296,29 @@ function ComplaintDetailsModal({
           <div className="flex items-center gap-2">
             <span className="text-xs text-text-secondary">Set status:</span>
             <select
-              value={complaint.status}
+              value={localStatus}
               onChange={(e) =>
-                onStatusChange(
-                  complaint.id,
-                  e.target.value as ComplaintStatus
-                )
+                setLocalStatus(e.target.value as ComplaintStatus)
               }
               className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-text-main outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
             >
               <option value="NEW">New</option>
-              <option value="IN_REVIEW">In review</option>
-              <option value="CLOSED">Closed</option>
+              <option value="REVIEWED">In review</option>
+              <option value="RESOLVED">Closed</option>
             </select>
+            <button
+              onClick={handleSave}
+              disabled={localStatus === complaint.status}
+              className={`rounded-lg px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60 disabled:cursor-not-allowed ${
+                localStatus === "NEW"
+                  ? "bg-status-booked hover:bg-status-booked/90"
+                  : localStatus === "REVIEWED"
+                  ? "bg-amber-500 hover:bg-amber-600"
+                  : "bg-status-available hover:bg-status-available/90"
+              }`}
+            >
+              Save status
+            </button>
           </div>
         </div>
       </div>
@@ -367,7 +336,7 @@ function renderStatusBadge(status: ComplaintStatus): ReactElement {
       </span>
     );
   }
-  if (status === "IN_REVIEW") {
+  if (status === "REVIEWED") {
     return (
       <span className="inline-flex rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800">
         In review

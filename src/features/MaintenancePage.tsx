@@ -1,4 +1,5 @@
-import { useState, type ReactElement } from "react";
+import { useEffect, useState, type ReactElement } from "react";
+import { api } from "../services/api";
 
 type MaintenanceStatus = "OPEN" | "IN_PROGRESS" | "RESOLVED";
 
@@ -29,89 +30,80 @@ interface MaintenanceItem {
   bicycle: MaintenanceBicycle;
 }
 
-const initialQueue: MaintenanceItem[] = [
-  {
-    id: 6,
-    userId: 2,
-    bicycleId: 1,
-    description: "Rear tire puncture near library stand.",
-    status: "OPEN",
-    reportedDate: "2026-02-12T19:09:08.378Z",
-    resolvedBy: null,
-    photoUrl:
-      "https://bms-development-images.s3.us-east-1.amazonaws.com/maintenance/example-flat-tyre.png",
-    user: {
-      id: 2,
-      firstName: "Student",
-      lastName: "Two",
-      email: "student2@uni.com",
-      role: "STUDENT",
-    },
-    bicycle: {
-      id: 1,
-      bicycleNumber: "B001",
-      status: "AVAILABLE",
-    },
-  },
-  {
-    id: 7,
-    userId: 3,
-    bicycleId: 4,
-    description: "Front brake feels very loose when going downhill.",
-    status: "IN_PROGRESS",
-    reportedDate: "2026-02-13T08:21:45.000Z",
-    resolvedBy: null,
-    photoUrl: null,
-    user: {
-      id: 3,
-      firstName: "Ayesha",
-      lastName: "Singh",
-      email: "s1234567@uni.com",
-      role: "STUDENT",
-    },
-    bicycle: {
-      id: 4,
-      bicycleNumber: "B014",
-      status: "MAINTENANCE",
-    },
-  },
-  {
-    id: 8,
-    userId: 5,
-    bicycleId: 9,
-    description: "Gear shifter fixed and chain re‑lubed.",
-    status: "RESOLVED",
-    reportedDate: "2026-02-10T11:03:00.000Z",
-    resolvedBy: "tech01",
-    photoUrl: null,
-    user: {
-      id: 5,
-      firstName: "Liam",
-      lastName: "Brown",
-      email: "s7654321@uni.com",
-      role: "STUDENT",
-    },
-    bicycle: {
-      id: 9,
-      bicycleNumber: "B027",
-      status: "AVAILABLE",
-    },
-  },
-];
-
 export default function MaintenancePage(): ReactElement {
-  const [queue, setQueue] = useState<MaintenanceItem[]>(initialQueue);
+  const [queue, setQueue] = useState<MaintenanceItem[]>([]);
   const [selected, setSelected] = useState<MaintenanceItem | null>(null);
   const [statusFilter, setStatusFilter] = useState<"" | MaintenanceStatus>("");
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const res = await api.get("/maintenance/queue");
+        const data = (res.data.queue ?? []) as Array<any>;
+
+        const mapped: MaintenanceItem[] = data.map((m) => ({
+          id: m.id,
+          userId: m.userId,
+          bicycleId: m.bicycleId,
+          description: m.description,
+          status: m.status as MaintenanceStatus,
+          reportedDate: m.reportedDate,
+          resolvedBy: m.resolvedBy ?? null,
+          photoUrl: m.photoUrl ?? null,
+          user: m.user,
+          bicycle: m.bicycle,
+        }));
+
+        setQueue(mapped);
+      } catch (err) {
+        console.error("Failed to load maintenance queue", err);
+      }
+    }
+
+    load();
+  }, []);
 
   const filteredQueue = queue.filter((item) =>
     statusFilter ? item.status === statusFilter : true
   );
 
   const handleDelete = (id: number) => {
+    // later: call backend DELETE/PATCH for real delete
     setQueue((prev) => prev.filter((item) => item.id !== id));
     if (selected?.id === id) setSelected(null);
   };
+
+  const handleUpdateStatus = async (
+  id: number,
+  nextStatus: MaintenanceStatus
+) => {
+  try {
+    await api.patch(`/maintenance/${id}/status`, {
+      status: nextStatus,
+    });
+
+    // use nextStatus instead of updated.status
+    setQueue((prev) =>
+      prev.map((item) =>
+        item.id === id
+          ? {
+              ...item,
+              status: nextStatus,
+              // keep resolvedBy only when moving to RESOLVED;
+              // otherwise clear it
+              resolvedBy:
+                nextStatus === "RESOLVED" ? item.resolvedBy : null,
+            }
+          : item
+      )
+    );
+
+    // no need to keep selected in sync if we close
+    setSelected(null);
+  } catch (err) {
+    console.error("Failed to update maintenance status", err);
+  }
+};
 
   return (
     <div className="space-y-6">
@@ -124,7 +116,7 @@ export default function MaintenancePage(): ReactElement {
         </p>
       </header>
 
-      {/* status filter only */}
+      {/* status filter */}
       <div className="flex gap-3 items-center">
         <span className="text-xs font-semibold text-text-secondary uppercase">
           Filter
@@ -143,6 +135,7 @@ export default function MaintenancePage(): ReactElement {
         </select>
       </div>
 
+      {/* table */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <table className="min-w-full text-sm">
           <thead className="bg-slate-50">
@@ -161,7 +154,7 @@ export default function MaintenancePage(): ReactElement {
               <tr key={item.id} className="border-t border-slate-100">
                 <td className="px-4 py-3 text-text-main">MT-{item.id}</td>
                 <td className="px-4 py-3 text-text-secondary">
-                  {item.bicycle.bicycleNumber}
+                  {item.bicycle?.bicycleNumber ?? item.bicycleId}
                 </td>
                 <td className="px-4 py-3 text-text-secondary">
                   {item.user.firstName} {item.user.lastName}
@@ -175,7 +168,9 @@ export default function MaintenancePage(): ReactElement {
                 <td className="px-4 py-3 text-text-secondary">
                   {formatDate(item.reportedDate)}
                 </td>
-                <td className="px-4 py-3">{renderStatusBadge(item.status)}</td>
+                <td className="px-4 py-3">
+                  {renderStatusBadge(item.status)}
+                </td>
                 <td className="px-4 py-3 text-right">
                   <button
                     className="text-xs font-semibold text-brand hover:text-brand-dark"
@@ -206,26 +201,41 @@ export default function MaintenancePage(): ReactElement {
           item={selected}
           onClose={() => setSelected(null)}
           onDelete={handleDelete}
+          onUpdateStatus={handleUpdateStatus}
         />
       )}
     </div>
   );
 }
 
-// ----- Details modal (same as before, delete only here) -----
+// ----- Details modal -----
 
 interface DetailsModalProps {
   item: MaintenanceItem;
   onClose: () => void;
   onDelete: (id: number) => void;
+  onUpdateStatus: (id: number, nextStatus: MaintenanceStatus) => void;
 }
 
 function DetailsModal({
   item,
   onClose,
   onDelete,
+  onUpdateStatus,
 }: DetailsModalProps): ReactElement {
+  const [selectedStatus, setSelectedStatus] = useState<MaintenanceStatus>(
+    item.status
+  );
+  // useEffect(() => {
+  //   setSelectedStatus(item.status);
+  // }, [item.status]);
   const canDelete = item.status === "RESOLVED";
+
+  const handleSaveStatus = () => {
+    if (selectedStatus !== item.status) {
+      onUpdateStatus(item.id, selectedStatus);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/30">
@@ -251,12 +261,26 @@ function DetailsModal({
         {/* body */}
         <div className="px-5 py-4 space-y-4 max-h-[70vh] overflow-y-auto">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
               {renderStatusBadge(item.status)}
               <span className="text-xs text-text-secondary">
                 Reported {formatDate(item.reportedDate)}
               </span>
+
+              {/* status dropdown */}
+              <select
+                value={selectedStatus}
+                onChange={(e) =>
+                  setSelectedStatus(e.target.value as MaintenanceStatus)
+                }
+                className="rounded-lg border border-slate-200 px-2 py-1 text-xs text-text-main outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+              >
+                <option value="OPEN">Open</option>
+                <option value="IN_PROGRESS">In progress</option>
+                <option value="RESOLVED">Resolved</option>
+              </select>
             </div>
+
             {item.resolvedBy && (
               <p className="text-xs text-text-secondary">
                 Resolved by{" "}
@@ -323,17 +347,22 @@ function DetailsModal({
           >
             Close
           </button>
-          <button hidden = {canDelete} className="rounded-lg bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-dark">
-            Update status
+          <button
+            onClick={handleSaveStatus}
+            disabled={selectedStatus === item.status}
+            className={`rounded-lg px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60 disabled:cursor-not-allowed ${selectedStatus === "OPEN"
+                ? "bg-status-booked hover:bg-status-booked/90"
+                : selectedStatus === "IN_PROGRESS"
+                  ? "bg-amber-500 hover:bg-amber-600"
+                  : "bg-status-available hover:bg-status-available/90"
+              }`}
+          >
+            Save status
           </button>
           <button
             hidden={!canDelete}
             onClick={() => onDelete(item.id)}
-            className={`rounded-lg px-3 py-1.5 text-xs font-semibold border ${
-              canDelete
-                ? "border-status-booked text-status-booked hover:bg-status-booked/5"
-                : "border-slate-100 text-slate-300 cursor-not-allowed"
-            }`}
+            className="rounded-lg px-3 py-1.5 text-xs font-semibold border border-status-booked text-status-booked hover:bg-status-booked/5"
           >
             Delete ticket
           </button>
@@ -376,4 +405,3 @@ function formatDate(iso: string): string {
     minute: "2-digit",
   });
 }
- 

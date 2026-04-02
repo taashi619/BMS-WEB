@@ -1,6 +1,7 @@
-import { useState, type ReactElement } from "react";
+import { useEffect, useState, type ReactElement } from "react";
+import { api } from "../services/api";
 
-type BikeStatus = "AVAILABLE" | "BOOKED" | "MAINTENANCE";
+type BikeStatus = "AVAILABLE" | "BOOKED" | "MAINTENANCE" | "IN_USE";
 
 interface Bicycle {
   id: number;
@@ -8,50 +9,49 @@ interface Bicycle {
   status: BikeStatus;
   lastMaintenanceDate: string | null;
   isActive: boolean;
-  bookings: unknown[]; // you can type this later
+  bookings: unknown[];
 }
 
-// dummy data similar to GET /bicycles/all
-const initialBicycles: Bicycle[] = [
-  {
-    id: 11,
-    bicycleNumber: "B011",
-    status: "BOOKED",
-    lastMaintenanceDate: null,
-    isActive: true,
-    bookings: [],
-  },
-  {
-    id: 9,
-    bicycleNumber: "B008",
-    status: "AVAILABLE",
-    lastMaintenanceDate: null,
-    isActive: true,
-    bookings: [
-      {
-        id: 5,
-        userId: 5,
-        bicycleId: 9,
-        note: "",
-      },
-    ],
-  },
-  {
-    id: 8,
-    bicycleNumber: "B009",
-    status: "MAINTENANCE",
-    lastMaintenanceDate: "2026-02-10T10:00:00.000Z",
-    isActive: true,
-    bookings: [],
-  },
-];
-
 export default function BikesPage(): ReactElement {
-  const [bicycles, setBicycles] = useState<Bicycle[]>(initialBicycles);
+  const [bicycles, setBicycles] = useState<Bicycle[]>([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"" | BikeStatus>("");
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [editingBike, setEditingBike] = useState<Bicycle | null>(null);
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const res = await api.get("/bicycles/all");
+        const data = (res.data ?? []) as Array<{
+          id: number;
+          bicycleNumber: string;
+          status: "AVAILABLE" | "BOOKED" | "UNDER_MAINTENANCE" |"IN_USE"| string;
+          lastMaintenanceDate: string | null;
+          isActive: boolean;
+          bookings: unknown[];
+        }>;
+
+        const mapped: Bicycle[] = data.map((b) => ({
+          id: b.id,
+          bicycleNumber: b.bicycleNumber,
+          status:
+            b.status === "UNDER_MAINTENANCE"
+              ? "MAINTENANCE"
+              : (b.status as BikeStatus),
+          lastMaintenanceDate: b.lastMaintenanceDate,
+          isActive: b.isActive,
+          bookings: b.bookings ?? [],
+        }));
+
+        setBicycles(mapped);
+      } catch (err) {
+        console.error("Failed to load bicycles", err);
+      }
+    }
+
+    load();
+  }, []);
 
   const filtered = bicycles.filter((b) => {
     const matchSearch = b.bicycleNumber
@@ -61,35 +61,113 @@ export default function BikesPage(): ReactElement {
     return matchSearch && matchStatus;
   });
 
-  const handleAddBike = (payload: {
+  // ADD: always create as AVAILABLE, active
+  const handleAddBike = async (payload: {
     bicycleNumber: string;
     status: BikeStatus;
     isActive: boolean;
   }) => {
-    // later: call POST /bicycles/add, then refetch; for now update local
-    const newBike: Bicycle = {
-      id: Date.now(),
-      bicycleNumber: payload.bicycleNumber,
-      status: payload.status,
-      isActive: payload.isActive,
-      lastMaintenanceDate: null,
-      bookings: [],
-    };
-    setBicycles((prev) => [newBike, ...prev]);
-    setIsAddOpen(false);
+    try {
+      const res = await api.post("/bicycles/add", {
+        bicycleNumber: payload.bicycleNumber,
+        status: "AVAILABLE",
+        isActive: true,
+      });
+
+      const b = res.data.bicycle ?? res.data;
+      const newBike: Bicycle = {
+        id: b.id,
+        bicycleNumber: b.bicycleNumber,
+        status: "AVAILABLE",
+        lastMaintenanceDate: b.lastMaintenanceDate ?? null,
+        isActive: b.isActive ?? true,
+        bookings: [],
+      };
+
+      setBicycles((prev) => [newBike, ...prev]);
+      setIsAddOpen(false);
+    } catch (err) {
+      console.error("Failed to add bicycle", err);
+    }
   };
 
-  const handleUpdateBike = (
+  // EDIT: PUT /bicycles/:id with number + status (isActive controlled via toggle)
+  const handleUpdateBike = async (
     id: number,
     payload: { bicycleNumber: string; status: BikeStatus; isActive: boolean }
   ) => {
-    // later: PUT /bicycles/:id then update state from response
-    setBicycles((prev) =>
-      prev.map((b) =>
-        b.id === id ? { ...b, ...payload } : b
-      )
-    );
-    setEditingBike(null);
+    try {
+      let backendStatus: string;
+      if (payload.status === "MAINTENANCE") {
+        backendStatus = "UNDER_MAINTENANCE";
+      } else {
+        backendStatus = payload.status;
+      }
+
+      const res = await api.put(`/bicycles/${id}`, {
+        bicycleNumber: payload.bicycleNumber,
+        status: backendStatus,
+        // do not change isActive here; toggle handles it
+      });
+
+      const updated = res.data.bicycle ?? res.data;
+
+      setBicycles((prev) =>
+        prev.map((b) =>
+          b.id === id
+            ? {
+              ...b,
+              bicycleNumber: updated.bicycleNumber,
+              status:
+                updated.status === "UNDER_MAINTENANCE"
+                  ? "MAINTENANCE"
+                  : (updated.status as BikeStatus),
+              lastMaintenanceDate: updated.lastMaintenanceDate,
+            }
+            : b
+        )
+      );
+      setEditingBike(null);
+    } catch (err) {
+      console.error("Failed to update bicycle", err);
+    }
+  };
+
+  // ACTIVE TOGGLE
+  const handleToggleActive = async (bike: Bicycle) => {
+    try {
+      if (bike.isActive) {
+        // turning OFF
+        const res = await api.patch(`/bicycles/${bike.id}/deactivate`);
+        const updated = res.data.bicycle ?? res.data;
+        setBicycles((prev) =>
+          prev.map((b) =>
+            b.id === bike.id ? { ...b, isActive: updated.isActive } : b
+          )
+        );
+      } else {
+        // turning ON – reuse PUT with current number/status but isActive true
+        const backendStatus =
+          bike.status === "MAINTENANCE"
+            ? "UNDER_MAINTENANCE"
+            : bike.status;
+
+        const res = await api.put(`/bicycles/${bike.id}`, {
+          bicycleNumber: bike.bicycleNumber,
+          status: backendStatus,
+          isActive: true,
+        });
+
+        const updated = res.data.bicycle ?? res.data;
+        setBicycles((prev) =>
+          prev.map((b) =>
+            b.id === bike.id ? { ...b, isActive: updated.isActive } : b
+          )
+        );
+      }
+    } catch (err) {
+      console.error("Failed to toggle active", err);
+    }
   };
 
   return (
@@ -121,6 +199,7 @@ export default function BikesPage(): ReactElement {
             <option value="">All statuses</option>
             <option value="AVAILABLE">Available</option>
             <option value="BOOKED">Booked</option>
+            <option value="IN_USE">Inuse</option>
             <option value="MAINTENANCE">Maintenance</option>
           </select>
         </div>
@@ -160,15 +239,28 @@ export default function BikesPage(): ReactElement {
                     : "—"}
                 </td>
                 <td className="px-4 py-3">
-                  {bike.isActive ? (
-                    <span className="inline-flex rounded-full bg-status-available/10 px-2.5 py-0.5 text-xs font-medium text-status-available">
-                      Active
-                    </span>
-                  ) : (
-                    <span className="inline-flex rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-700">
-                      Inactive
-                    </span>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (bike.status === "BOOKED") return; 
+                      handleToggleActive(bike);
+                    }}
+                    disabled={bike.status === "BOOKED"}
+                    className={`relative inline-flex h-5 w-10 items-center rounded-full transition ${bike.isActive ? "bg-status-available" : "bg-slate-300"
+                      } ${bike.status === "BOOKED" ? "opacity-50 cursor-not-allowed" : ""}`}
+                    title={
+                      bike.status === "BOOKED"
+                        ? "Cannot deactivate a booked bicycle"
+                        : bike.isActive
+                          ? "Click to deactivate"
+                          : "Click to activate"
+                    }
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition ${bike.isActive ? "translate-x-5" : "translate-x-1"
+                        }`}
+                    />
+                  </button>
                 </td>
                 <td className="px-4 py-3 text-right">
                   <button
@@ -241,16 +333,20 @@ function BikeFormModal({
   const [status, setStatus] = useState<BikeStatus>(
     initialBike?.status ?? "AVAILABLE"
   );
-  const [isActive, setIsActive] = useState<boolean>(
-    initialBike?.isActive ?? true
-  );
 
   const title = mode === "add" ? "Add bicycle" : "Edit bicycle";
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit({ bicycleNumber, status, isActive });
+    // isActive is controlled by the toggle; pass current (or true for add)
+    onSubmit({
+      bicycleNumber,
+      status,
+      isActive: initialBike?.isActive ?? true,
+    });
   };
+
+  const disableStatus = mode === "add";
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/30">
@@ -287,28 +383,19 @@ function BikeFormModal({
             <select
               value={status}
               onChange={(e) => setStatus(e.target.value as BikeStatus)}
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-text-main outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+              disabled={disableStatus}
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-text-main outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:bg-slate-50 disabled:text-slate-400"
             >
               <option value="AVAILABLE">Available</option>
               <option value="BOOKED">Booked</option>
+              <option value="IN_USE">Inuse</option>
               <option value="MAINTENANCE">Maintenance</option>
             </select>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <input
-              id="isActive"
-              type="checkbox"
-              checked={isActive}
-              onChange={(e) => setIsActive(e.target.checked)}
-              className="h-4 w-4 rounded border-slate-300 text-brand focus:ring-brand/30"
-            />
-            <label
-              htmlFor="isActive"
-              className="text-sm text-text-secondary"
-            >
-              Active in system
-            </label>
+            {disableStatus && (
+              <p className="text-[11px] text-text-secondary">
+                New bicycles always start as Available.
+              </p>
+            )}
           </div>
 
           <div className="flex justify-end gap-2 pt-2">
@@ -346,6 +433,13 @@ function renderStatusBadge(status: BikeStatus): ReactElement {
     return (
       <span className="inline-flex rounded-full bg-status-booked/10 px-2.5 py-0.5 text-xs font-medium text-status-booked">
         Booked
+      </span>
+    );
+  }
+  if (status === "IN_USE") {
+    return (
+      <span className="inline-flex rounded-full bg-status-booked/10 px-2.5 py-0.5 text-xs font-medium text-status-booked">
+        Inuse
       </span>
     );
   }
