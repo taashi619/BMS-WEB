@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactElement } from "react";
+import { useEffect, useState, type ReactElement, useCallback } from "react";
 import { api } from "../services/api";
 
 type BookingStatus =
@@ -31,23 +31,31 @@ export default function RequestsPage(): ReactElement {
   const [filter, setFilter] = useState<FilterType>("ALL");
   const [selected, setSelected] = useState<RequestItem | null>(null);
 
-  useEffect(() => {
-    async function load() {
-      try {
-        setLoading(true);
-        const res = await api.get("/booking-confirm/open");
-        const data = (res.data.bookings ?? []) as Array<any>;
-        const mapped = data.map(mapBookingToRequest);
-        setRequests(mapped);
-      } catch (err) {
-        console.error("Failed to load bookings", err);
-      } finally {
-        setLoading(false);
-      }
+  const load = useCallback(async () => {
+    try {
+      setLoading(true);
+      const res = await api.get("/booking-confirm/open");
+      const data = (res.data.bookings ?? []) as Array<any>;
+      const mapped = data.map(mapBookingToRequest);
+      setRequests(mapped);
+    } catch (err) {
+      console.error("Failed to load bookings", err);
+    } finally {
+      setLoading(false);
     }
-
-    load();
   }, []);
+
+  useEffect(() => {
+    // initial load
+    load();
+
+    // auto-refresh every 10 seconds
+    const id = setInterval(() => {
+      load();
+    }, 10000);
+
+    return () => clearInterval(id);
+  }, [load]);
 
   const filteredRequests = requests.filter((req) =>
     filter === "ALL" ? true : req.status === filter
@@ -58,7 +66,6 @@ export default function RequestsPage(): ReactElement {
       if (request.status === "BOOKED") {
         await api.patch(`/booking-confirm/${request.id}/key`);
 
-        // update status locally instead of removing
         setRequests((prev) =>
           prev.map((r) =>
             r.id === request.id ? { ...r, status: "KEY_TAKEN" } : r
@@ -70,7 +77,6 @@ export default function RequestsPage(): ReactElement {
       } else if (request.status === "RETURN_PENDING") {
         await api.patch(`/booking-confirm/${request.id}/approve-return`);
 
-        // return approved: either update or remove, your choice
         setRequests((prev) =>
           prev.map((r) =>
             r.id === request.id ? { ...r, status: "APPROVED_RETURN" } : r
@@ -87,9 +93,40 @@ export default function RequestsPage(): ReactElement {
     }
   };
 
+  const handleSecondaryAction = async (request: RequestItem) => {
+    try {
+      if (request.status === "BOOKED") {
+        await api.patch(`/booking-confirm/${request.id}/reject`);
+
+        setRequests((prev) =>
+          prev.map((r) =>
+            r.id === request.id ? { ...r, status: "CANCELLED" } : r
+          )
+        );
+        setSelected((prev) =>
+          prev && prev.id === request.id ? { ...prev, status: "CANCELLED" } : prev
+        );
+      } else if (request.status === "RETURN_PENDING") {
+        await api.patch(`/booking-confirm/${request.id}/rejapprove`);
+
+        // after rejecting a return, student still has the bike → back to KEY_TAKEN
+        setRequests((prev) =>
+          prev.map((r) =>
+            r.id === request.id ? { ...r, status: "KEY_TAKEN" } : r
+          )
+        );
+        setSelected((prev) =>
+          prev && prev.id === request.id ? { ...prev, status: "KEY_TAKEN" } : prev
+        );
+      }
+    } catch (err) {
+      console.error("Failed to handle secondary booking action", err);
+    }
+  };
+
   return (
     <div className="space-y-6">
-      <header className="flex items-center justify-between">
+      <header className="flex items-center justify_between">
         <div>
           <h1 className="text-xl font-semibold text-text-main">
             Booking & return requests
@@ -132,7 +169,9 @@ export default function RequestsPage(): ReactElement {
           <tbody>
             {filteredRequests.map((req) => {
               const primaryLabel = getPrimaryActionLabel(req.status);
+              const secondaryLabel = getSecondaryActionLabel(req.status);
               const hasPrimaryAction = !!primaryLabel;
+              const hasSecondaryAction = !!secondaryLabel;
 
               return (
                 <tr key={req.id} className="border-t border-slate-100">
@@ -167,6 +206,14 @@ export default function RequestsPage(): ReactElement {
                           {primaryLabel}
                         </button>
                       )}
+                      {hasSecondaryAction && (
+                        <button
+                          onClick={() => handleSecondaryAction(req)}
+                          className="px-3 py-1 text-xs rounded-full bg-status-booked text-white"
+                        >
+                          {secondaryLabel}
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -177,7 +224,7 @@ export default function RequestsPage(): ReactElement {
               <tr>
                 <td
                   colSpan={5}
-                  className="px-4 py-6 text-center text-sm text-text-secondary"
+                  className="px-4 py-6 text-center text-sm text-text_secondary"
                 >
                   No bookings found for this filter.
                 </td>
@@ -188,7 +235,7 @@ export default function RequestsPage(): ReactElement {
               <tr>
                 <td
                   colSpan={5}
-                  className="px-4 py-6 text-center text-sm text-text-secondary"
+                  className="px-4 py-6 text-center text-sm text-text_secondary"
                 >
                   Loading bookings…
                 </td>
@@ -203,6 +250,7 @@ export default function RequestsPage(): ReactElement {
           request={selected}
           onClose={() => setSelected(null)}
           onPrimaryAction={handlePrimaryAction}
+          onSecondaryAction={handleSecondaryAction}
         />
       )}
     </div>
@@ -215,14 +263,17 @@ interface RequestDetailsModalProps {
   request: RequestItem;
   onClose: () => void;
   onPrimaryAction: (req: RequestItem) => void;
+  onSecondaryAction: (req: RequestItem) => void;
 }
 
 function RequestDetailsModal({
   request,
   onClose,
   onPrimaryAction,
+  onSecondaryAction,
 }: RequestDetailsModalProps): ReactElement {
   const primaryLabel = getPrimaryActionLabel(request.status);
+  const secondaryLabel = getSecondaryActionLabel(request.status);
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/30">
@@ -250,32 +301,32 @@ function RequestDetailsModal({
           </div>
 
           <div className="rounded-xl bg-slate-50 px-4 py-3">
-            <p className="text-xs font-semibold text-text-secondary uppercase">
+            <p className="text-xs font-semibold text-text_secondary uppercase">
               Student
             </p>
             <p className="text-sm font-medium text-text-main">
               {request.studentName}
             </p>
-            <p className="text-xs text-text-secondary">
+            <p className="text-xs text-text_secondary">
               {request.studentEmail}
             </p>
           </div>
 
           <div className="rounded-xl bg-slate-50 px-4 py-3">
-            <p className="text-xs font-semibold text-text-secondary uppercase">
+            <p className="text-xs font-semibold text-text_secondary uppercase">
               Time details
             </p>
-            <p className="text-xs text-text-secondary">
+            <p className="text-xs text-text_secondary">
               Booking time: {new Date(request.bookingTime).toLocaleString()}
             </p>
-            <p className="text-xs text-text-secondary">
+            <p className="text-xs text-text_secondary">
               Planned return:{" "}
               {request.plannedReturnTime
                 ? new Date(request.plannedReturnTime).toLocaleString()
                 : "Not set"}
             </p>
             {request.actualReturnTime && (
-              <p className="text-xs text-text-secondary">
+              <p className="text-xs text-text_secondary">
                 Actual return:{" "}
                 {new Date(request.actualReturnTime).toLocaleString()}
               </p>
@@ -284,10 +335,10 @@ function RequestDetailsModal({
 
           {request.status === "RETURN_PENDING" && (
             <div className="rounded-xl bg-slate-50 px-4 py-3">
-              <p className="text-xs font-semibold text-text-secondary uppercase">
+              <p className="text-xs font-semibold text-text_secondary uppercase">
                 Return summary
               </p>
-              <p className="text-xs text-text-secondary">
+              <p className="text-xs text-text_secondary">
                 Fine:{" "}
                 <span className="font-semibold">
                   £{Number(request.fineAmount).toFixed(2)}
@@ -298,7 +349,7 @@ function RequestDetailsModal({
 
           {request.note && (
             <div>
-              <p className="text-xs font-semibold text-text-secondary uppercase mb-1">
+              <p className="text-xs font-semibold text-text_secondary uppercase mb-1">
                 Note
               </p>
               <p className="text-sm text-text-main whitespace-pre-line">
@@ -315,6 +366,14 @@ function RequestDetailsModal({
           >
             Close
           </button>
+          {secondaryLabel && (
+            <button
+              onClick={() => onSecondaryAction(request)}
+              className="px-3 py-1.5 text-xs rounded-full bg-status-booked text-white"
+            >
+              {secondaryLabel}
+            </button>
+          )}
           {primaryLabel && (
             <button
               onClick={() => onPrimaryAction(request)}
@@ -333,8 +392,9 @@ function RequestDetailsModal({
 
 function mapBookingToRequest(b: any): RequestItem {
   const status = b.status as BookingStatus;
-  const studentName = `${b.user?.firstName ?? ""} ${b.user?.lastName ?? ""
-    }`.trim();
+  const studentName = `${b.user?.firstName ?? ""} ${
+    b.user?.lastName ?? ""
+  }`.trim();
 
   return {
     id: b.id,
@@ -355,6 +415,12 @@ function mapBookingToRequest(b: any): RequestItem {
 function getPrimaryActionLabel(status: BookingStatus): string | null {
   if (status === "BOOKED") return "Issue key";
   if (status === "RETURN_PENDING") return "Approve return";
+  return null;
+}
+
+function getSecondaryActionLabel(status: BookingStatus): string | null {
+  if (status === "BOOKED") return "Reject booking";
+  if (status === "RETURN_PENDING") return "Reject return";
   return null;
 }
 

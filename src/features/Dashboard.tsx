@@ -83,6 +83,10 @@ export default function DashboardPage() {
 
   useEffect(() => {
     load();
+    const id = setInterval(() => {
+      load();
+    }, 10000);
+    return () => clearInterval(id);
   }, [load]);
 
   async function handleIssueKey(bookingId: number) {
@@ -100,6 +104,24 @@ export default function DashboardPage() {
       await load();
     } catch (err) {
       console.error("Failed to approve return", err);
+    }
+  }
+
+  async function handleRejectBooking(bookingId: number) {
+    try {
+      await api.patch(`/booking-confirm/${bookingId}/reject`);
+      await load();
+    } catch (err) {
+      console.error("Failed to reject booking", err);
+    }
+  }
+
+  async function handleRejectReturn(bookingId: number) {
+    try {
+      await api.patch(`/booking-confirm/${bookingId}/rejapprove`);
+      await load();
+    } catch (err) {
+      console.error("Failed to reject return", err);
     }
   }
 
@@ -146,43 +168,62 @@ export default function DashboardPage() {
             API.
           </p>
           <ul className="space-y-2 text-sm">
-            {lists.openBookings.filter(
-              (bk: any) =>
-                bk.status === "BOOKED" || bk.status === "RETURN_PENDING"
-            ).map((bk: any) => (
-              <li
-                key={bk.id}
-                className="bg-white rounded-lg border border-slate-200 px-3 py-2 flex items-center justify-between"
-              >
-                <div>
-                  <p className="font-medium text-text-main">
-                    Request #{bk.id} · Bike{" "}
-                    {bk.bicycle?.bicycleNumber ?? bk.bicycleId}
-                  </p>
-                  <p className="text-xs text-text-secondary">
-                    Student: {bk.user?.firstName} {bk.user?.lastName}
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  {bk.status === "BOOKED" && (
-                    <button
-                      className="px-3 py-1 text-xs rounded-full bg-status-available text-white"
-                      onClick={() => handleIssueKey(bk.id)}
-                    >
-                      Issue key
-                    </button>
-                  )}
-                  {bk.status === "RETURN_PENDING" && (
-                    <button
-                      className="px-3 py-1 text-xs rounded-full bg-status-available text-white"
-                      onClick={() => handleApproveReturn(bk.id)}
-                    >
-                      Approve return
-                    </button>
-                  )}
-                </div>
-              </li>
-            ))}
+            {lists.openBookings
+              .filter(
+                (bk: any) =>
+                  bk.status === "BOOKED" || bk.status === "RETURN_PENDING"
+              )
+              .map((bk: any) => (
+                <li
+                  key={bk.id}
+                  className="bg-white rounded-lg border border-slate-200 px-3 py-2 flex items-center justify-between"
+                >
+                  <div>
+                    <p className="font-medium text-text-main">
+                      Request #{bk.id} · Bike{" "}
+                      {bk.bicycle?.bicycleNumber ?? bk.bicycleId}
+                    </p>
+                    <p className="text-xs text-text-secondary">
+                      Student: {bk.user?.firstName} {bk.user?.lastName}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    {bk.status === "BOOKED" && (
+                      <>
+                        <button
+                          className="px-3 py-1 text-xs rounded-full bg-status-available text-white"
+                          onClick={() => handleIssueKey(bk.id)}
+                        >
+                          Issue key
+                        </button>
+                        <button
+                          className="px-3 py-1 text-xs rounded-full bg-status-booked text-white"
+                          onClick={() => handleRejectBooking(bk.id)}
+                        >
+                          Reject booking
+                        </button>
+                      </>
+                    )}
+
+                    {bk.status === "RETURN_PENDING" && (
+                      <>
+                        <button
+                          className="px-3 py-1 text-xs rounded-full bg-status-available text-white"
+                          onClick={() => handleApproveReturn(bk.id)}
+                        >
+                          Approve return
+                        </button>
+                        <button
+                          className="px-3 py-1 text-xs rounded-full bg-status-booked text-white"
+                          onClick={() => handleRejectReturn(bk.id)}
+                        >
+                          Reject return
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </li>
+              ))}
             {lists.openBookings.filter(
               (bk: any) =>
                 bk.status === "BOOKED" || bk.status === "RETURN_PENDING"
