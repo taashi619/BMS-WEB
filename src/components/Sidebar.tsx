@@ -4,6 +4,7 @@ const navItems = [
   { to: "/admin/dashboard", label: "Dashboard" },
   { to: "/admin/bicycles", label: "Bicycles" },
   { to: "/admin/requests", label: "Bookings / Returns" },
+  { to: "/admin/audit", label: "Fines & audit" },
   { to: "/admin/maintenance", label: "Maintenance" },
   { to: "/admin/complaints", label: "Complaints" },
   { to: "/admin/students", label: "Students" },

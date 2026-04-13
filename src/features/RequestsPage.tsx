@@ -23,13 +23,14 @@ interface RequestItem {
   helmetRequired: boolean;
 }
 
-type FilterType = "ALL" | BookingStatus;
+type FilterType = "ALL" | "ONLY_FINES" | BookingStatus;
 
 export default function RequestsPage(): ReactElement {
   const [requests, setRequests] = useState<RequestItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState<FilterType>("ALL");
   const [selected, setSelected] = useState<RequestItem | null>(null);
+  const [adjusting, setAdjusting] = useState<RequestItem | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -46,26 +47,23 @@ export default function RequestsPage(): ReactElement {
   }, []);
 
   useEffect(() => {
-    // initial load
     load();
-
-    // auto-refresh every 10 seconds
     const id = setInterval(() => {
       load();
     }, 10000);
-
     return () => clearInterval(id);
   }, [load]);
 
-  const filteredRequests = requests.filter((req) =>
-    filter === "ALL" ? true : req.status === filter
-  );
+  const filteredRequests = requests.filter((req) => {
+    if (filter === "ALL") return true;
+    if (filter === "ONLY_FINES") return req.fineAmount > 0;
+    return req.status === filter;
+  });
 
   const handlePrimaryAction = async (request: RequestItem) => {
     try {
       if (request.status === "BOOKED") {
         await api.patch(`/booking-confirm/${request.id}/key`);
-
         setRequests((prev) =>
           prev.map((r) =>
             r.id === request.id ? { ...r, status: "KEY_TAKEN" } : r
@@ -76,7 +74,6 @@ export default function RequestsPage(): ReactElement {
         );
       } else if (request.status === "RETURN_PENDING") {
         await api.patch(`/booking-confirm/${request.id}/approve-return`);
-
         setRequests((prev) =>
           prev.map((r) =>
             r.id === request.id ? { ...r, status: "APPROVED_RETURN" } : r
@@ -97,7 +94,6 @@ export default function RequestsPage(): ReactElement {
     try {
       if (request.status === "BOOKED") {
         await api.patch(`/booking-confirm/${request.id}/reject`);
-
         setRequests((prev) =>
           prev.map((r) =>
             r.id === request.id ? { ...r, status: "CANCELLED" } : r
@@ -108,8 +104,6 @@ export default function RequestsPage(): ReactElement {
         );
       } else if (request.status === "RETURN_PENDING") {
         await api.patch(`/booking-confirm/${request.id}/rejapprove`);
-
-        // after rejecting a return, student still has the bike → back to KEY_TAKEN
         setRequests((prev) =>
           prev.map((r) =>
             r.id === request.id ? { ...r, status: "KEY_TAKEN" } : r
@@ -122,6 +116,17 @@ export default function RequestsPage(): ReactElement {
     } catch (err) {
       console.error("Failed to handle secondary booking action", err);
     }
+  };
+
+  const handleFineUpdated = (bookingId: number, newFine: number) => {
+    setRequests((prev) =>
+      prev.map((r) =>
+        r.id === bookingId ? { ...r, fineAmount: newFine } : r
+      )
+    );
+    setSelected((prev) =>
+      prev && prev.id === bookingId ? { ...prev, fineAmount: newFine } : prev
+    );
   };
 
   return (
@@ -146,6 +151,7 @@ export default function RequestsPage(): ReactElement {
             className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-text-main outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
           >
             <option value="ALL">All statuses</option>
+            <option value="ONLY_FINES">Only fines</option>
             <option value="BOOKED">Booked</option>
             <option value="KEY_TAKEN">Key taken</option>
             <option value="RETURN_PENDING">Return pending</option>
@@ -162,7 +168,8 @@ export default function RequestsPage(): ReactElement {
               <th className="px-4 py-3">Request ID</th>
               <th className="px-4 py-3">Student</th>
               <th className="px-4 py-3">Bicycle</th>
-              <th className="px-4 py-3">Type</th>
+              <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3">Fine (£)</th>
               <th className="px-4 py-3 text-right">Actions</th>
             </tr>
           </thead>
@@ -190,6 +197,9 @@ export default function RequestsPage(): ReactElement {
                   <td className="px-4 py-3">
                     {renderStatusChip(req.status)}
                   </td>
+                  <td className="px-4 py-3 text-text-main">
+                    £{req.fineAmount.toFixed(2)}
+                  </td>
                   <td className="px-4 py-3 text-right">
                     <div className="inline-flex gap-2">
                       <button
@@ -198,6 +208,14 @@ export default function RequestsPage(): ReactElement {
                       >
                         View
                       </button>
+                      {req.fineAmount > 0 && (
+                        <button
+                          onClick={() => setAdjusting(req)}
+                          className="px-3 py-1 text-xs rounded-full border border-amber-300 text-amber-800 bg-amber-50 hover:bg-amber-100"
+                        >
+                          Adjust fine
+                        </button>
+                      )}
                       {hasPrimaryAction && (
                         <button
                           onClick={() => handlePrimaryAction(req)}
@@ -223,7 +241,7 @@ export default function RequestsPage(): ReactElement {
             {filteredRequests.length === 0 && !loading && (
               <tr>
                 <td
-                  colSpan={5}
+                  colSpan={6}
                   className="px-4 py-6 text-center text-sm text-text_secondary"
                 >
                   No bookings found for this filter.
@@ -234,7 +252,7 @@ export default function RequestsPage(): ReactElement {
             {loading && (
               <tr>
                 <td
-                  colSpan={5}
+                  colSpan={6}
                   className="px-4 py-6 text-center text-sm text-text_secondary"
                 >
                   Loading bookings…
@@ -253,11 +271,151 @@ export default function RequestsPage(): ReactElement {
           onSecondaryAction={handleSecondaryAction}
         />
       )}
+
+      {adjusting && (
+        <AdjustFineModal
+          booking={adjusting}
+          onClose={() => setAdjusting(null)}
+          onUpdated={handleFineUpdated}
+        />
+      )}
     </div>
   );
 }
 
-// ---------- details modal ----------
+// ---------- Adjust fine modal ----------
+
+interface AdjustFineModalProps {
+  booking: RequestItem;
+  onClose: () => void;
+  onUpdated: (bookingId: number, newFine: number) => void;
+}
+
+function AdjustFineModal({
+  booking,
+  onClose,
+  onUpdated,
+}: AdjustFineModalProps): ReactElement {
+  const [newFine, setNewFine] = useState<string>(
+    booking.fineAmount.toString()
+  );
+  const [reason, setReason] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSave = async () => {
+    setError(null);
+    const amount = Number(newFine);
+
+    if (Number.isNaN(amount) || amount < 0) {
+      setError("Fine must be a non‑negative number.");
+      return;
+    }
+    if (!reason.trim()) {
+      setError("Reason is required.");
+      return;
+    }
+
+    try {
+      setSaving(true);
+      await api.post(`/audit/admin/bookings/${booking.id}/adjust-fine`, {
+        newFineAmount: amount,
+        reason: reason.trim(),
+      });
+      onUpdated(booking.id, amount);
+      onClose();
+    } catch (err) {
+      console.error("Failed to adjust fine", err);
+      setError("Could not adjust fine. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/30">
+      <div className="w-full max-w-md rounded-2xl bg-white shadow-xl border border-slate-200">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
+          <div>
+            <p className="text-xs uppercase tracking-wide text-text-secondary">
+              Adjust fine
+            </p>
+            <p className="text-base font-semibold text-text-main">
+              {booking.requestCode} · {booking.bicycleLabel}
+            </p>
+          </div>
+          <button
+            className="text-sm text-text-secondary hover:text-text-main"
+            onClick={onClose}
+            disabled={saving}
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="px-5 py-4 space-y-4">
+          <div>
+            <p className="text-xs font-semibold text-text-secondary uppercase mb-1">
+              Current fine
+            </p>
+            <p className="text-sm text-text-main">
+              £{booking.fineAmount.toFixed(2)}
+            </p>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-text-secondary uppercase mb-1 block">
+              New fine amount (£)
+            </label>
+            <input
+              type="number"
+              step="0.01"
+              value={newFine}
+              onChange={(e) => setNewFine(e.target.value)}
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-text-main outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-text-secondary uppercase mb-1 block">
+              Reason
+            </label>
+            <textarea
+              rows={3}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-text-main outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+              placeholder="Explain why you are adjusting this fine..."
+            />
+          </div>
+
+          {error && (
+            <p className="text-xs text-red-600">{error}</p>
+          )}
+        </div>
+
+        <div className="px-5 py-3 border-t border-slate-200 flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            disabled={saving}
+            className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-text-main hover:bg-slate-50 disabled:opacity-60"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="rounded-lg bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-dark disabled:opacity-60"
+          >
+            {saving ? "Saving..." : "Save adjustment"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------- RequestDetailsModal + helpers (unchanged from your version) ----------
 
 interface RequestDetailsModalProps {
   request: RequestItem;
@@ -387,8 +545,6 @@ function RequestDetailsModal({
     </div>
   );
 }
-
-// ---------- mapping + helpers ----------
 
 function mapBookingToRequest(b: any): RequestItem {
   const status = b.status as BookingStatus;

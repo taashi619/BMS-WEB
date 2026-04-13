@@ -7,6 +7,7 @@ import RequestsPage from "./features/RequestsPage";
 import MaintenancePage from "./features/MaintenancePage";
 import ComplaintsPage from "./features/ComplaintsPage";
 import StudentsPage from "./features/StudentsPage";
+import FinesAuditPage from "./features/FinesAuditPage";
 
 function isAuthenticated() {
   return Boolean(localStorage.getItem("bmsAdminToken"));
@@ -27,6 +28,7 @@ function App() {
                 <Route path="dashboard" element={<DashboardPage />} />
                 <Route path="bicycles" element={<BikesPage />} />
                 <Route path="requests" element={<RequestsPage />} />
+                <Route path="audit" element={<FinesAuditPage />} />
                 <Route path="maintenance" element={<MaintenancePage />} />
                 <Route path="complaints" element={<ComplaintsPage />} />
                 <Route path="students" element={<StudentsPage />} />
