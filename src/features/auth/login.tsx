@@ -43,9 +43,9 @@ export function LoginPage() {
   return (
     <div className="min-h-screen w-screen bg-slate-100 flex items-center justify-center relative">
       <img
-        src="/src/assets/react.svg"
+        src="/src/assets/uni.jpg"
         alt=""
-        className="pointer-events-none absolute -right-32 -bottom-24 w-[520px] opacity-10"
+        className="pointer-events-none absolute -right-1 -bottom-24 w-[520px] opacity-10"
       />
       <div className="w-full max-w-md rounded-2xl bg-white shadow-lg p-8 relative z-10">
         <h1 className="text-2xl font-bold text-text-main mb-2">
@@ -71,7 +71,7 @@ export function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-text-main outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
-              placeholder="admin@bms.com"
+              placeholder="Enter the email"
               required
             />
           </div>
@@ -85,7 +85,7 @@ export function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-text-main outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
-              placeholder="••••••••"
+              placeholder="Enter the password"
               required
             />
           </div>
@@ -99,10 +99,10 @@ export function LoginPage() {
           </button>
         </form>
 
-        <p className="mt-6 text-xs text-text-secondary">
+        {/* <p className="mt-6 text-xs text-text-secondary">
           For security reasons, access is restricted to authorized administrators
           only.
-        </p>
+        </p> */}
       </div>
     </div>
   );

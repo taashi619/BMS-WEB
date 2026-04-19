@@ -6,8 +6,6 @@ import {
 } from "react";
 import { api } from "../services/api";
 
-// ---- types ----
-
 type AuditAction = "APPROVE_RETURN" | "UNDO_CHARGE" | "STATUS_CHANGE";
 
 interface AuditLogItem {
@@ -26,8 +24,6 @@ interface AuditLogItem {
   previousFineAmount?: string | null;
   newFineAmount?: string | null;
 }
-
-// ---------- main page ----------
 
 export default function FinesAuditPage(): ReactElement {
   const [logs, setLogs] = useState<AuditLogItem[]>([]);
@@ -74,11 +70,13 @@ export default function FinesAuditPage(): ReactElement {
     reloadAuditLogs();
   }, []);
 
-  // quick stats (still based on newFineAmount or fineAmount)
   const stats = useMemo(() => {
     const adjustments = logs.filter((l) => l.actionType === "UNDO_CHARGE");
     const totalAdjusted = adjustments.reduce((sum, l) => {
-      const v = l.newFineAmount != null ? Number(l.newFineAmount) : Number(l.fineAmount);
+      const v =
+        l.newFineAmount != null
+          ? Number(l.newFineAmount)
+          : Number(l.fineAmount);
       return Number.isFinite(v) ? sum + v : sum;
     }, 0);
     const studentSet = new Set(
@@ -109,8 +107,12 @@ export default function FinesAuditPage(): ReactElement {
 
     const matchesChange = (() => {
       if (!changeFilter || log.actionType !== "UNDO_CHARGE") return true;
-      const prev = log.previousFineAmount != null ? Number(log.previousFineAmount) : NaN;
-      const next = log.newFineAmount != null ? Number(log.newFineAmount) : NaN;
+      const prev =
+        log.previousFineAmount != null
+          ? Number(log.previousFineAmount)
+          : NaN;
+      const next =
+        log.newFineAmount != null ? Number(log.newFineAmount) : NaN;
       if (!Number.isFinite(prev) || !Number.isFinite(next)) return true;
       const diff = next - prev;
       if (changeFilter === "INCREASE") return diff > 0;
@@ -133,28 +135,19 @@ export default function FinesAuditPage(): ReactElement {
             approvals.
           </p>
         </div>
-
-        <button
-          onClick={reloadAuditLogs}
-          disabled={loading}
-          className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-text-main hover:bg-slate-50 disabled:opacity-60"
-        >
-          {loading ? "Refreshing..." : "Refresh"}
-        </button>
       </header>
 
-      {/* summary cards */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <SummaryCard
           label="Fine adjustments"
           value={stats.count.toString()}
           helper="Logged UNDO_CHARGE entries"
         />
-        <SummaryCard
+        {/* <SummaryCard
           label="Total adjusted fines"
           value={`£${stats.totalAdjusted.toFixed(2)}`}
           helper="Current fine values after adjustments"
-        />
+        /> */}
         <SummaryCard
           label="Students affected"
           value={stats.studentCount.toString()}
@@ -162,7 +155,6 @@ export default function FinesAuditPage(): ReactElement {
         />
       </div>
 
-      {/* filters row */}
       <div className="flex flex-wrap gap-3 items-center justify-between">
         <div className="flex flex-wrap gap-3 items-center">
           <div className="flex gap-2 items-center">
@@ -182,23 +174,6 @@ export default function FinesAuditPage(): ReactElement {
               <option value="STATUS_CHANGE">Status changes</option>
             </select>
           </div>
-
-          <div className="flex gap-2 items-center">
-            <span className="text-xs font-semibold text-text-secondary uppercase">
-              Change
-            </span>
-            <select
-              value={changeFilter}
-              onChange={(e) =>
-                setChangeFilter(e.target.value as "" | "INCREASE" | "DECREASE")
-              }
-              className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-text-main outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
-            >
-              <option value="">All</option>
-              <option value="DECREASE">Reductions</option>
-              <option value="INCREASE">Increases</option>
-            </select>
-          </div>
         </div>
 
         <div className="flex items-center gap-2">
@@ -211,7 +186,6 @@ export default function FinesAuditPage(): ReactElement {
         </div>
       </div>
 
-      {/* table */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <table className="min-w-full text-sm">
           <thead className="bg-slate-50">
@@ -221,6 +195,7 @@ export default function FinesAuditPage(): ReactElement {
               <th className="px-4 py-3">Student</th>
               <th className="px-4 py-3">Booking</th>
               <th className="px-4 py-3">Fine (£)</th>
+              <th className="px-4 py-3">Change (£)</th> {/* NEW */}
               <th className="px-4 py-3">Admin</th>
               <th className="px-4 py-3">Reason</th>
             </tr>
@@ -235,7 +210,11 @@ export default function FinesAuditPage(): ReactElement {
                 <td className="px-4 py-3 text-text-secondary">
                   {formatDate(log.timestamp)}
                 </td>
-                <td className="px-4 py-3">{renderActionBadge(log.actionType)}</td>
+
+                <td className="px-4 py-3">
+                  {renderActionBadge(log.actionType)}
+                </td>
+
                 <td className="px-4 py-3 text-text-secondary">
                   {log.studentName ?? "-"}
                   {log.studentIndex && (
@@ -244,9 +223,11 @@ export default function FinesAuditPage(): ReactElement {
                     </span>
                   )}
                 </td>
+
                 <td className="px-4 py-3 text-text-secondary">
                   Bkg-{log.bookingId}
                 </td>
+
                 <td className="px-4 py-3 text-text-main">
                   <div className="flex flex-col">
                     <span>£{Number(log.fineAmount).toFixed(2)}</span>
@@ -257,9 +238,45 @@ export default function FinesAuditPage(): ReactElement {
                     )}
                   </div>
                 </td>
+
+                {/* NEW Change (£) column */}
+                <td className="px-4 py-3 text-text-main">
+                  {(() => {
+                    if (log.actionType !== "UNDO_CHARGE") return "—";
+
+                    const prev =
+                      log.previousFineAmount != null
+                        ? Number(log.previousFineAmount)
+                        : NaN;
+                    const next =
+                      log.newFineAmount != null
+                        ? Number(log.newFineAmount)
+                        : NaN;
+
+                    if (!Number.isFinite(prev) || !Number.isFinite(next))
+                      return "—";
+
+                    const diff = Number((next - prev).toFixed(2));
+                    const sign = diff > 0 ? "+" : "";
+
+                    return (
+                      <span
+                        className={
+                          diff < 0
+                            ? "text-emerald-700 text-sm"
+                            : "text-amber-700 text-sm"
+                        }
+                      >
+                        {sign}£{diff.toFixed(2)}
+                      </span>
+                    );
+                  })()}
+                </td>
+
                 <td className="px-4 py-3 text-text-secondary">
                   {log.adminName}
                 </td>
+
                 <td className="px-4 py-3 text-text-secondary max-w-sm">
                   <span className="line-clamp-2">
                     {log.reason || "—"}
@@ -271,7 +288,7 @@ export default function FinesAuditPage(): ReactElement {
             {!loading && filtered.length === 0 && (
               <tr>
                 <td
-                  colSpan={7}
+                  colSpan={8}
                   className="px-4 py-6 text-center text-sm text-text-secondary"
                 >
                   No audit entries match your filters.
@@ -292,8 +309,6 @@ export default function FinesAuditPage(): ReactElement {
   );
 }
 
-// ---------- details drawer (read‑only) ----------
-
 interface AuditDetailsDrawerProps {
   log: AuditLogItem;
   onClose: () => void;
@@ -303,15 +318,16 @@ function AuditDetailsDrawer({
   log,
   onClose,
 }: AuditDetailsDrawerProps): ReactElement {
-  const prev = log.previousFineAmount != null ? Number(log.previousFineAmount) : null;
-  const next = log.newFineAmount != null ? Number(log.newFineAmount) : null;
+  const prev =
+    log.previousFineAmount != null ? Number(log.previousFineAmount) : null;
+  const next =
+    log.newFineAmount != null ? Number(log.newFineAmount) : null;
   const diff =
     prev != null && next != null ? Number((next - prev).toFixed(2)) : null;
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end bg-black/20">
       <div className="h-full w-full max-w-md bg-white shadow-xl border-l border-slate-200 flex flex-col">
-        {/* header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
           <div>
             <p className="text-xs uppercase tracking-wide text-text-secondary">
@@ -329,7 +345,6 @@ function AuditDetailsDrawer({
           </button>
         </div>
 
-        {/* body */}
         <div className="flex-1 px-5 py-4 space-y-4 overflow-y-auto">
           <div>
             <p className="text-xs font-semibold text-text-secondary uppercase mb-1">
@@ -385,7 +400,13 @@ function AuditDetailsDrawer({
                 <p>New fine: £{next.toFixed(2)}</p>
                 <p>
                   Change:{" "}
-                  <span className={diff != null && diff < 0 ? "text-emerald-700" : "text-amber-700"}>
+                  <span
+                    className={
+                      diff != null && diff < 0
+                        ? "text-emerald-700"
+                        : "text-amber-700"
+                    }
+                  >
                     {diff != null && diff > 0 ? "+" : ""}
                     £{diff?.toFixed(2)}
                   </span>
@@ -420,8 +441,6 @@ function AuditDetailsDrawer({
     </div>
   );
 }
-
-// ---------- small components / helpers ----------
 
 interface SummaryCardProps {
   label: string;

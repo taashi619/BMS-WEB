@@ -153,9 +153,9 @@ export default function RequestsPage(): ReactElement {
             <option value="ALL">All statuses</option>
             <option value="ONLY_FINES">Only fines</option>
             <option value="BOOKED">Booked</option>
-            <option value="KEY_TAKEN">Key taken</option>
-            <option value="RETURN_PENDING">Return pending</option>
-            <option value="APPROVED_RETURN">Return approved</option>
+            <option value="KEY_TAKEN">Ride in progress</option>
+            <option value="RETURN_PENDING">Issue Key</option>
+            <option value="APPROVED_RETURN">Confirm key</option>
             <option value="CANCELLED">Cancelled</option>
           </select>
         </div>

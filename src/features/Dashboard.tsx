@@ -161,11 +161,12 @@ export default function DashboardPage() {
         {/* New requests panel */}
         <Panel title="New requests">
           <p className="text-xs text-text-secondary mb-2">
-            Latest booking / return requests from your
+             Latest booking / return requests 
+            {/*from your
             <code className="ml-1 bg-slate-100 px-1 rounded text-[10px]">
               /booking-confirm/open
             </code>{" "}
-            API.
+            API. */}
           </p>
           <ul className="space-y-2 text-sm">
             {lists.openBookings
@@ -238,7 +239,7 @@ export default function DashboardPage() {
         {/* Maintenance & complaints panel */}
         <Panel title="Maintenance & complaints">
           <p className="text-xs text-text-secondary mb-2">
-            Combined view from your maintenance and complaint APIs.
+            Combined view of maintenance and complaints.
           </p>
           <ul className="space-y-2 text-sm">
             {lists.maintenance.map((m: any) => (
