@@ -1,18 +1,34 @@
 // src/components/TopBar.tsx
 import { useState, type ReactElement } from "react";
 
-export default function TopBar(): ReactElement {
+interface Profile {
+  firstName: string;
+  lastName: string;
+  email: string;
+  role: string;
+}
+
+export default function TopBar({
+  profile,
+}: {
+  profile: Profile | null;
+}): ReactElement {
   const [open, setOpen] = useState(false);
 
-  // later you’ll get these from /profile
-  const initials = "AB";
+  const fullName = profile
+    ? `${profile.firstName} ${profile.lastName}`
+    : "Admin";
+
+  const initials = profile
+    ? `${profile.firstName[0] ?? ""}${profile.lastName[0] ?? ""}`.toUpperCase()
+    : "AD";
 
   return (
     <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 md:px-6 relative">
       <div>
         <p className="text-xs text-text-secondary">Admin console</p>
         <p className="text-sm font-semibold text-text-main">
-          Welcome back, Admin
+          Welcome back, {fullName}
         </p>
       </div>
 
@@ -38,10 +54,7 @@ export default function TopBar(): ReactElement {
             </button>
             <button
               className="w-full text-left px-3 py-2 text-text-main hover:bg-slate-50"
-              onClick={() => {
-                // placeholder for settings
-                setOpen(false);
-              }}
+              onClick={() => setOpen(false)}
             >
               Settings
             </button>
