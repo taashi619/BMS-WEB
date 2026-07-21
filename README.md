@@ -41,6 +41,13 @@ This repository is part of a broader full-stack portfolio project that includes 
 2. Start the local development server with `npm run dev`
 3. Open the local browser URL shown in the terminal
 
+## Demo Access
+
+Admin demo access is available for review purposes.
+
+- email - admin@bms.com
+- password - admin123
+
 ## Suggested Screenshots
 
 <img width="1446" height="1312" alt="image" src="https://github.com/user-attachments/assets/9723756b-7355-43df-a3c7-44435bde7ccb" />
