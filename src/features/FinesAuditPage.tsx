@@ -29,7 +29,7 @@ export default function FinesAuditPage(): ReactElement {
   const [logs, setLogs] = useState<AuditLogItem[]>([]);
   const [actionFilter, setActionFilter] = useState<"" | AuditAction>("");
   const [searchTerm, setSearchTerm] = useState("");
-  const [changeFilter, setChangeFilter] = useState<
+  const [changeFilter] = useState<
     "" | "INCREASE" | "DECREASE"
   >("");
   const [selected, setSelected] = useState<AuditLogItem | null>(null);

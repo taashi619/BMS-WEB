@@ -9,16 +9,11 @@ import ComplaintsPage from "./features/ComplaintsPage";
 import StudentsPage from "./features/StudentsPage";
 import FinesAuditPage from "./features/FinesAuditPage";
 
-function isAuthenticated() {
-  return Boolean(localStorage.getItem("bmsAdminToken"));
-}
-
 function App() {
   return (
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<LoginPage />} />
-
         <Route
           path="/admin/*"
           element={
