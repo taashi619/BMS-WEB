@@ -4,7 +4,7 @@ Administrative web application for the BMS platform, built to work with the shar
 
 ## Live Demo
 
-[Open the deployed app](https://your-admin-web-url.onrender.com)
+[[Open the deployed app](https://your-admin-web-url.onrender.com)](https://bms-web-toht.onrender.com)
 
 ## Project Summary
 
